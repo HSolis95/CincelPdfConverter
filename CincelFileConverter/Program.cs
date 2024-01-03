@@ -1,49 +1,81 @@
 ﻿//File converter in cincel
-using System.Net.Http;
 using System.Net.Http.Headers;
 
-var richEdit = File.ReadAllBytes("./doc.docx");
-var responseBytes = await ConvertToPdf(richEdit);
-File.WriteAllBytes(Environment.CurrentDirectory + "/doc.pdf", responseBytes);
+var inBytes = File.ReadAllBytes("./doc.docx");
+var path = "./doc.docx";
 
-static async Task<byte[]> ConvertToPdf(byte[] data)
+var pathBytes = await ConvertFromPath(path);
+var byteArrayBytes = await ConvertFromByteArray(inBytes);
+
+File.WriteAllBytes("./bytes.pdf", byteArrayBytes);
+File.WriteAllBytes("./path.pdf", pathBytes);
+
+
+
+static async Task<byte[]> ConvertFromPath(string path)
 {
-    string apiEndpoint = "https://sandbox.api.cincel.digital/v3/convert-to-pdf";
-    try
+    using (var httpClient = new HttpClient())
+    using (var formData = new MultipartFormDataContent())
+    using (var fileStream = File.OpenRead(path))
+    using (var fileContent = new StreamContent(fileStream))
     {
-        var stream = new MemoryStream(data);
+        // Add the image file to the form data
+        formData.Add(fileContent, "file", Path.GetFileName(path));
 
-        // Create an HTTP client
-        using var httpClient = new HttpClient();
-
-        // Create a POST request to the "convert-to-pdf" endpoint
-        using var request = new HttpRequestMessage(HttpMethod.Post, apiEndpoint);
-
-        // Create a MultipartFormDataContent and add the file content
-        using var content = new MultipartFormDataContent
-        {
-            { new StreamContent(stream), "file", "doc.docx" }
-        };
-        request.Content = content;
+        // Set the content type header
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
 
         // Send the request and get the response
-        var response = await httpClient.SendAsync(request);
+        var response = await httpClient.PostAsync("https://sandbox.api.cincel.digital/v3/convert-to-pdf", formData);
 
         // Check if the response is successful
         if (response.IsSuccessStatusCode)
         {
+            // Handle the successful response
             return await response.Content.ReadAsByteArrayAsync();
         }
         else
         {
-            throw new Exception("request code failed");
             // Handle the case where the response is not successful
+            var resultString = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"Request failed with status code {response.StatusCode}. Response: {resultString}");
+            throw new Exception("Failed");
         }
+    }
+}
+
+
+
+static async Task<byte[]> ConvertFromByteArray(byte[] data)
+{
+
+    try
+    {
+        // Create an HTTP client
+        using var httpClient = new HttpClient();
+        using var formData = new MultipartFormDataContent();
+        using var fileContent = new ByteArrayContent(data);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+
+        formData.Add(fileContent, "file", "doc.docx");
+
+        // Send the request and get the response
+        var response = await httpClient.PostAsync("https://sandbox.api.cincel.digital/v3/convert-to-pdf", formData);
+
+        // Check if the response is successful
+        if (response.IsSuccessStatusCode)
+        {
+            // Handle the successful response
+            return await response.Content.ReadAsByteArrayAsync();
+        }
+        else
+        {
+            throw new Exception("Http status code failed");
+        }
+
     }
     catch (Exception ex)
     {
-        Console.Error.Write(ex.ToString());
-        Console.ReadLine();
         throw;
     }
 }
